@@ -45,57 +45,22 @@ jobs:
           az login --service-principal \
             -u ${{ secrets.AZURE_CLIENT_ID }} \
             -p ${{ secrets.AZURE_CLIENT_SECRET }} \
-            --tenant ${{ secrets.AZURE_TENANT_ID }} \
-            --allow-no-subscriptions
+            --tenant ${{ secrets.AZURE_TENANT_ID }}
           az account set --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # 8️⃣ Create or Update Azure Container App
-      - name: Create or Update Azure Container App
+      # 8️⃣ Simple Update to Azure Container App
+      - name: Update Azure Container App
         run: |
-          APP_EXISTS=$(az containerapp show \
-            --name azure-blob-nestjs-app \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --query "name" -o tsv 2>/dev/null || echo "none")
+          az containerapp update \
+            -n azure-blob-nestjs-app \
+            -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
 
-          if [ "$APP_EXISTS" = "none" ]; then
-            echo "🆕 App does not exist — creating..."
-            az containerapp create \
-              --name azure-blob-nestjs-app \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --environment ${{ secrets.AZURE_CONTAINERAPP_ENV }} \
-              --image ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest \
-              --ingress external --target-port 3001 \
-              --cpu 0.5 --memory 1Gi \
-              --min-replicas 1 --max-replicas 2 \
-              --env-vars \
-                AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
-                AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }} \
-                AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
-                AZURE_SUBSCRIPTION_ID=${{ secrets.AZURE_SUBSCRIPTION_ID }} \
-                AZURE_STORAGE_ACCOUNT_NAME=${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }} \
-                AZURE_STORAGE_CONTAINER_NAME=${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
-          else
-            echo "🔄 App exists — updating..."
-            az containerapp update \
-              --name azure-blob-nestjs-app \
-              --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-              --image ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest \
-              --cpu 0.5 --memory 1Gi \
-              --min-replicas 1 --max-replicas 2 \
-              --set-env-vars \
-                AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
-                AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }} \
-                AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
-                AZURE_SUBSCRIPTION_ID=${{ secrets.AZURE_SUBSCRIPTION_ID }} \
-                AZURE_STORAGE_ACCOUNT_NAME=${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }} \
-                AZURE_STORAGE_CONTAINER_NAME=${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
-          fi
-
-      # 9️⃣ Verify and show public URL
+      # 9️⃣ Optional - Show the deployed URL
       - name: Show deployed container app URL
         run: |
           URL=$(az containerapp show \
             --name azure-blob-nestjs-app \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "✅ Application deployed and available at: https://$URL"
+          echo "✅ App deployed and accessible at: https://$URL"
