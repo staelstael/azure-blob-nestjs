@@ -47,6 +47,16 @@ jobs:
             -p ${{ secrets.AZURE_CLIENT_SECRET }} \
             --tenant ${{ secrets.AZURE_TENANT_ID }}
           az account set --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: DEBUG - Contexte Azure
+        run: |
+          echo "=== Subscription active ==="
+          az account show --output table
+    
+          echo "=== Resource groups accessibles ==="
+          az group list --query "[?contains(name, 'api')].{name:name, location:location}" --output table
+    
+          echo "=== Container Apps dans apiBlob ==="
+          az containerapp list --resource-group apiBlob --output table || echo "ERREUR : pas d'accès ou groupe inexistant"
 
       # 8️⃣ Simple Update to Azure Container App
       - name: Update Azure Container App
