@@ -53,7 +53,7 @@ jobs:
         run: |
           az containerapp update \
             -n azure-blob-nestjs-app \
-            -g ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            -g apiBlob \
             --image ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
 
       # 9️⃣ Optional - Show the deployed URL
