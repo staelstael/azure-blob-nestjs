@@ -1,53 +1,70 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   BlobServiceClient,
-  ContainerClient,
   BlockBlobClient,
-  BlobDeleteOptions,
+  ContainerClient,
 } from '@azure/storage-blob';
 import { ClientSecretCredential } from '@azure/identity';
-import * as dotenv from 'dotenv';
-
-dotenv.config();
 
 @Injectable()
 export class BlobService {
   private readonly logger = new Logger(BlobService.name);
-  private blobServiceClient: BlobServiceClient;
   private containerClient: ContainerClient;
 
   constructor() {
+    // Vérification des variables d'environnement
+    const requiredEnv = [
+      'AZURE_TENANT_ID',
+      'AZURE_CLIENT_ID',
+      'AZURE_CLIENT_SECRET',
+      'AZURE_STORAGE_ACCOUNT_NAME',
+      'AZURE_STORAGE_CONTAINER_NAME',
+    ];
+
+    for (const env of requiredEnv) {
+      if (!process.env[env]) {
+        throw new Error(`Missing environment variable: ${env}`);
+      }
+    }
+
+    // Authentification via SPN
     const credential = new ClientSecretCredential(
       process.env.AZURE_TENANT_ID!,
       process.env.AZURE_CLIENT_ID!,
       process.env.AZURE_CLIENT_SECRET!,
     );
 
-    this.blobServiceClient = new BlobServiceClient(
+    // Client Blob
+    const blobServiceClient = new BlobServiceClient(
       `https://${process.env.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net`,
       credential,
     );
 
-    this.containerClient = this.blobServiceClient.getContainerClient(
+    // Conteneur
+    this.containerClient = blobServiceClient.getContainerClient(
       process.env.AZURE_STORAGE_CONTAINER_NAME!,
     );
+
+    // Créer le conteneur s'il n'existe pas
+    this.containerClient.createIfNotExists().catch((err) => {
+      this.logger.error('Failed to create container', err.message);
+    });
   }
 
-  /**
-   * Upload a blob to the container
-   */
-  async uploadBlob(blobName: string, filePath: string) {
-    this.logger.log(`Uploading blob: ${blobName}`);
+  // Upload depuis buffer (mémoire) - FONCTIONNE EN DOCKER
+  async uploadFromBuffer(blobName: string, buffer: Buffer) {
+    this.logger.log(`Uploading blob: ${blobName} (${buffer.length} bytes)`);
     const blockBlobClient: BlockBlobClient =
       this.containerClient.getBlockBlobClient(blobName);
 
-    await blockBlobClient.uploadFile(filePath);
-    return { blobName, message: 'Uploaded successfully' };
+    await blockBlobClient.upload(buffer, buffer.length);
+
+    const url = blockBlobClient.url;
+    this.logger.log(`Uploaded successfully: ${url}`);
+    return { blobName, url };
   }
 
-  /**
-   * List all blobs in the container
-   */
+  // Lister les blobs
   async listBlobs(): Promise<string[]> {
     const blobs: string[] = [];
     for await (const blob of this.containerClient.listBlobsFlat()) {
@@ -56,46 +73,25 @@ export class BlobService {
     return blobs;
   }
 
-  /**
-   * Delete all blobs in the container
-   */
+  // Supprimer tous les blobs
   async deleteAllBlobs() {
     const blobs = await this.listBlobs();
-    this.logger.log(
-      `Deleting ${blobs.length} blobs from container: ${this.containerClient.containerName}`,
-    );
+    this.logger.log(`Deleting ${blobs.length} blobs...`);
 
     for (const blobName of blobs) {
-      try {
-        const blockBlobClient: BlockBlobClient =
-          this.containerClient.getBlockBlobClient(blobName);
-
-        const options: BlobDeleteOptions = { deleteSnapshots: 'include' };
-        await blockBlobClient.delete(options);
-
-        this.logger.log(`Deleted blob: ${blobName}`);
-      } catch (error) {
-        this.logger.error(`Failed to delete blob: ${blobName}`, error);
-      }
+      const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
+      await blockBlobClient.delete();
+      this.logger.log(`Deleted: ${blobName}`);
     }
 
-    return {
-      container: this.containerClient.containerName,
-      message: 'All deletable blobs processed',
-    };
+    return { message: `Deleted ${blobs.length} blob(s)` };
   }
 
+  // Vérifier l'existence d'un blob
   async findBlob(blobName: string): Promise<boolean> {
-    const blockBlobClient: BlockBlobClient =
-      this.containerClient.getBlockBlobClient(blobName);
-
+    const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
     const exists = await blockBlobClient.exists();
-    this.logger.log(
-      exists
-        ? `Blob "${blobName}" exists in container ${this.containerClient.containerName}`
-        : `Blob "${blobName}" does NOT exist in container ${this.containerClient.containerName}`,
-    );
-
+    this.logger.log(`Blob "${blobName}" ${exists ? 'exists' : 'not found'}`);
     return exists;
   }
 }
