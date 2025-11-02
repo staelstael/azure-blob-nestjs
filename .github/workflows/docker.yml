@@ -8,6 +8,7 @@ on:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
       # 1️⃣ Checkout repo
       - name: Checkout repository
@@ -46,6 +47,7 @@ jobs:
             -p ${{ secrets.AZURE_CLIENT_SECRET }} \
             --tenant ${{ secrets.AZURE_TENANT_ID }} \
             --allow-no-subscriptions
+          az account set --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       # 8️⃣ Deploy to Azure Container Apps
       - name: Deploy to Azure Container Apps
@@ -54,7 +56,6 @@ jobs:
             --name azure-blob-nestjs-app \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --image ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest \
-            --environment ${{ secrets.AZURE_CONTAINERAPP_ENV }} \
             --cpu 0.5 --memory 1Gi \
             --min-replicas 1 --max-replicas 2 \
             --set-env-vars \
