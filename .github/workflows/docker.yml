@@ -1,26 +1,65 @@
-name: Build and Push Docker
+name: Build and Deploy to Azure Container Apps
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
 
 jobs:
-  docker:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      # 1️⃣ Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Log in to Docker Hub
+      # 2️⃣ Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      # 3️⃣ Docker Hub login
+      - name: Docker Hub Login
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v4
-        with:
-          context: .
-          push: true
-          tags: staeltchoupou333/azure-blob-nestjs:latest
+      # 4️⃣ Build Docker image
+      - name: Build Docker image
+        run: docker build -t azure-blob-nestjs .
+
+      # 5️⃣ Tag Docker image for Docker Hub
+      - name: Tag Docker image
+        run: docker tag azure-blob-nestjs:latest ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
+
+      # 6️⃣ Push Docker image to Docker Hub
+      - name: Push Docker image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
+
+      # 7️⃣ Azure CLI login using SPN
+      - name: Azure Login with SPN
+        run: |
+          az login --service-principal \
+            -u ${{ secrets.AZURE_CLIENT_ID }} \
+            -p ${{ secrets.AZURE_CLIENT_SECRET }} \
+            --tenant ${{ secrets.AZURE_TENANT_ID }}
+
+      # 8️⃣ Deploy to Azure Container Apps
+      - name: Deploy to Azure Container Apps
+        run: |
+          az containerapp update \
+            --name azure-blob-nestjs-app \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --image ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest \
+            --environment ${{ secrets.AZURE_CONTAINERAPP_ENV }} \
+            --cpu 0.5 --memory 1Gi \
+            --min-replicas 1 --max-replicas 2 \
+            --env-vars \
+              AZURE_CLIENT_ID=${{ secrets.AZURE_CLIENT_ID }} \
+              AZURE_CLIENT_SECRET=${{ secrets.AZURE_CLIENT_SECRET }} \
+              AZURE_TENANT_ID=${{ secrets.AZURE_TENANT_ID }} \
+              AZURE_SUBSCRIPTION_ID=${{ secrets.AZURE_SUBSCRIPTION_ID }} \
+              AZURE_STORAGE_ACCOUNT_NAME=${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }} \
+              AZURE_STORAGE_CONTAINER_NAME=${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
