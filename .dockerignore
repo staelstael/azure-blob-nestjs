@@ -1,0 +1,32 @@
+# Node modules (ils seront installés dans le container)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build output
+dist
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Git
+.git
+.gitignore
+
+# IDE / Editor files
+.vscode
+.idea
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Tests / temporary files
+test
+*.spec.ts
+*.spec.js
+coverage
