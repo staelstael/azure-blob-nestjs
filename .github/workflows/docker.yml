@@ -1,3 +1,4 @@
+# .github/workflows/deploy.yml
 name: Build and Deploy to Azure Container Apps
 
 on:
@@ -8,49 +9,40 @@ jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout du code
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Setup Node.js + cache
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      # 3. Install + Build
-      - name: Install dependencies
-        run: npm ci
+      - name: Install & Build
+        run: |
+          npm ci
+          npm run build
 
-      - name: Build application
-        run: npm run build
-
-      # 4. Docker Hub login
       - name: Docker Hub Login
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 5. Build image (force rebuild complet)
-      - name: Build Docker image
+      # REBUILD COMPLET (équivalent de ton docker rmi + --no-cache)
+      - name: Build Docker image (full rebuild)
         run: |
-          docker build --no-cache -t azure-blob-nestjs .
+          docker builder prune -f  # Nettoie le build cache
+          docker build --no-cache --pull -t azure-blob-nestjs .
 
-      # 6. Tag image
-      - name: Tag Docker image
+      - name: Tag & Push
         run: |
-          docker tag azure-blob-nestjs:latest ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
+          IMAGE="${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest"
+          docker tag azure-blob-nestjs:latest $IMAGE
+          docker push $IMAGE
+          echo "Pushed: $IMAGE"
 
-      # 7. Push image
-      - name: Push Docker image
-        run: |
-          docker push ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
-          echo "Image pushed: ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest"
-
-      # 8. Azure Login (SPN)
-      - name: Azure Login with SPN
+      - name: Azure Login
         run: |
           az login --service-principal \
             -u ${{ secrets.AZURE_CLIENT_ID }} \
@@ -58,28 +50,15 @@ jobs:
             --tenant ${{ secrets.AZURE_TENANT_ID }}
           az account set --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      # 9. Debug Azure
-      - name: DEBUG - Azure Context
-        run: |
-          echo "=== Subscription ==="
-          az account show --output table
-          echo "=== Container App ==="
-          az containerapp list --resource-group apiBlob --output table
-
-      # 10. Update Azure Container App
-      - name: Update Azure Container App
+      - name: Update Container App
         run: |
           az containerapp update \
             --name azure-blob-nestjs-app \
             --resource-group apiBlob \
             --image ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
 
-      # 11. Show URL
-      - name: Show deployed URL
+      - name: Show URL
         run: |
-          URL=$(az containerapp show \
-            --name azure-blob-nestjs-app \
-            --resource-group apiBlob \
-            --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "App deployed at: https://$URL"
+          URL=$(az containerapp show --name azure-blob-nestjs-app --resource-group apiBlob --query "properties.configuration.ingress.fqdn" -o tsv)
+          echo "App: https://$URL"
           echo "Swagger: https://$URL/api"
