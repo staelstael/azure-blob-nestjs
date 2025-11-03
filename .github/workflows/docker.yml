@@ -2,44 +2,54 @@ name: Build and Deploy to Azure Container Apps
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
-      # 1️⃣ Checkout repoe
+      # 1. Checkout du code
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # 2️⃣ Setup Node.js
+      # 2. Setup Node.js + cache
       - name: Setup Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
-      # 3️⃣ Docker Hub login
+      # 3. Install + Build
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      # 4. Docker Hub login
       - name: Docker Hub Login
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 4️⃣ Build Docker image
+      # 5. Build image (force rebuild complet)
       - name: Build Docker image
-        run: docker build -t azure-blob-nestjs .
+        run: |
+          docker build --no-cache -t azure-blob-nestjs .
 
-      # 5️⃣ Tag Docker image for Docker Hub
+      # 6. Tag image
       - name: Tag Docker image
-        run: docker tag azure-blob-nestjs:latest ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
+        run: |
+          docker tag azure-blob-nestjs:latest ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
 
-      # 6️⃣ Push Docker image to Docker Hub
+      # 7. Push image
       - name: Push Docker image
-        run: docker push ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
+        run: |
+          docker push ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
+          echo "Image pushed: ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest"
 
-      # 7️⃣ Azure CLI login using SPN
+      # 8. Azure Login (SPN)
       - name: Azure Login with SPN
         run: |
           az login --service-principal \
@@ -47,30 +57,29 @@ jobs:
             -p ${{ secrets.AZURE_CLIENT_SECRET }} \
             --tenant ${{ secrets.AZURE_TENANT_ID }}
           az account set --subscription ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: DEBUG - Contexte Azure
-        run: |
-          echo "=== Subscription active ==="
-          az account show --output table
-    
-          echo "=== Resource groups accessibles ==="
-          az group list --query "[?contains(name, 'api')].{name:name, location:location}" --output table
-    
-          echo "=== Container Apps dans apiBlob ==="
-          az containerapp list --resource-group apiBlob --output table || echo "ERREUR : pas d'accès ou groupe inexistant"
 
-      # 8️⃣ Simple Update to Azure Container App
+      # 9. Debug Azure
+      - name: DEBUG - Azure Context
+        run: |
+          echo "=== Subscription ==="
+          az account show --output table
+          echo "=== Container App ==="
+          az containerapp list --resource-group apiBlob --output table
+
+      # 10. Update Azure Container App
       - name: Update Azure Container App
         run: |
           az containerapp update \
-            -n azure-blob-nestjs-app \
-            -g apiBlob \
+            --name azure-blob-nestjs-app \
+            --resource-group apiBlob \
             --image ${{ secrets.DOCKER_USERNAME }}/azure-blob-nestjs:latest
 
-      # 9️⃣ Optional - Show the deployed URL
-      - name: Show deployed container app URL
+      # 11. Show URL
+      - name: Show deployed URL
         run: |
           URL=$(az containerapp show \
             --name azure-blob-nestjs-app \
-            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --resource-group apiBlob \
             --query "properties.configuration.ingress.fqdn" -o tsv)
-          echo "✅ App deployed and accessible at: https://$URL"
+          echo "App deployed at: https://$URL"
+          echo "Swagger: https://$URL/api"
