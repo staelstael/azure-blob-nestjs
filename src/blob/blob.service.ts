@@ -12,7 +12,7 @@ export class BlobService {
   private containerClient: ContainerClient;
 
   constructor() {
-    // Vérification des variables d'environnement
+    // Check for required environment variables
     const requiredEnv = [
       'AZURE_TENANT_ID',
       'AZURE_CLIENT_ID',
@@ -27,31 +27,31 @@ export class BlobService {
       }
     }
 
-    // Authentification via SPN
+    // Authenticate using Service Principal (SPN)
     const credential = new ClientSecretCredential(
       process.env.AZURE_TENANT_ID!,
       process.env.AZURE_CLIENT_ID!,
       process.env.AZURE_CLIENT_SECRET!,
     );
 
-    // Client Blob
+    // Initialize Blob Service Client
     const blobServiceClient = new BlobServiceClient(
       `https://${process.env.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net`,
       credential,
     );
 
-    // Conteneur
+    // Get container client
     this.containerClient = blobServiceClient.getContainerClient(
       process.env.AZURE_STORAGE_CONTAINER_NAME!,
     );
 
-    // Créer le conteneur s'il n'existe pas
+    // Create container if it doesn't exist
     this.containerClient.createIfNotExists().catch((err) => {
       this.logger.error('Failed to create container', err.message);
     });
   }
 
-  // Upload depuis buffer (mémoire) - FONCTIONNE EN DOCKER
+  // Upload blob from memory buffer
   async uploadFromBuffer(blobName: string, buffer: Buffer) {
     this.logger.log(`Uploading blob: ${blobName} (${buffer.length} bytes)`);
     const blockBlobClient: BlockBlobClient =
@@ -64,7 +64,7 @@ export class BlobService {
     return { blobName, url };
   }
 
-  // Lister les blobs
+  // List all blobs in the container
   async listBlobs(): Promise<string[]> {
     const blobs: string[] = [];
     for await (const blob of this.containerClient.listBlobsFlat()) {
@@ -73,10 +73,10 @@ export class BlobService {
     return blobs;
   }
 
-  // Supprimer tous les blobs
+  // Delete all blobs in the container
   async deleteAllBlobs() {
     const blobs = await this.listBlobs();
-    this.logger.log(`Deleting ${blobs.length} blobs...`);
+    this.logger.log(`Deleting ${blobs.length} blob(s)...`);
 
     for (const blobName of blobs) {
       const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
@@ -87,7 +87,7 @@ export class BlobService {
     return { message: `Deleted ${blobs.length} blob(s)` };
   }
 
-  // Vérifier l'existence d'un blob
+  // Check if a blob exists
   async findBlob(blobName: string): Promise<boolean> {
     const blockBlobClient = this.containerClient.getBlockBlobClient(blobName);
     const exists = await blockBlobClient.exists();
